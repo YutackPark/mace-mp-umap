@@ -1,0 +1,1 @@
+sevenn_umap_analysis 7net-0 ../small.extxyz ../sub.xyz --filtering exclusive -e Al -e O

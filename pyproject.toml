@@ -18,8 +18,9 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mace_mp_umap"]
+include = ["mace_mp_umap", "sevenn_umap"]
 namespaces = false
 
 [project.scripts]
 mace_mp_umap_analysis = "mace_mp_umap.cli:app"
+sevenn_umap_analysis = "sevenn_umap.cli:app"

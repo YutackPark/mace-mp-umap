@@ -1,26 +1,24 @@
 import pathlib
 import typing as t
-from collections import defaultdict
-
 import typer
-from mace.calculators import mace_mp
 from typing_extensions import Annotated
-
 app = typer.Typer()
 import warnings
 from enum import Enum
 
 import torch
 
-from .analysis import find_closest_training_points
-from .chemiscope_handling import write_chemiscope_input
-from .data_manipulations import get_cleaned_dataframe
-from .dim_reduction import (
+from mace_mp_umap.analysis import find_closest_training_points
+from mace_mp_umap.dim_reduction import (
     apply_dimensionality_reduction,
     fit_dimensionality_reduction,
 )
-from .plotting import plot_dimensionality_reduction
-from .utils import get_layer_specific_feature_slices
+from mace_mp_umap.plotting import plot_dimensionality_reduction
+
+from sevenn.sevennet_calculator import SevenNetCalculator
+from .chemiscope_handling import write_chemiscope_input
+from .data_manipulations import get_cleaned_dataframe
+from .utils import patch_calc_for_descriptor
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -34,6 +32,10 @@ class FilterType(str, Enum):
 
 @app.command()
 def produce_mace_chemiscope_input(
+    model_cp: str = typer.Argument(
+        default="7net-0",
+        help="Path to sevennet checkpoint or model kwards"
+    ),
     data_path: str = typer.Argument(
         default=None,
         help="Path to XYZ file containing your system",
@@ -67,25 +69,26 @@ def produce_mace_chemiscope_input(
         )
 
     # Load model
-    calc = mace_mp(
-        model="medium",
+    calc = SevenNetCalculator(
+        model=model_cp,
         device=DEVICE,
-        default_dtype="float64",
     )
+    calc = patch_calc_for_descriptor(calc)
+
+    cutoff = calc.cutoff
     print(
-        f"Using the MACE cutoff ({calc.r_max} A) for neighbour analysis for all elements."
+        f"Using the SevenNet cutoff ({cutoff} Angstrom) for neighbour analysis for all elements."
     )
-    cutoff_dict = defaultdict(lambda: calc.r_max)
 
     # Load MP data
     print("For MP")
     train_atoms, training_data_df = get_cleaned_dataframe(
-        mp_data_path, calc, element_subset, cutoff_dict, filtering_type=filtering
+        mp_data_path, calc, element_subset, cutoff, filtering_type=filtering
     )
     # Load test data
     print("For Test")
     test_atoms, test_data_df = get_cleaned_dataframe(
-        data_path, calc, element_subset, cutoff_dict, filtering_type="none"
+        data_path, calc, element_subset, cutoff, filtering_type="none"
     )
     if len(test_data_df) == 0 or len(training_data_df) == 0:
         raise ValueError(
@@ -96,28 +99,26 @@ def produce_mace_chemiscope_input(
     system_name = f"{pathlib.Path(data_path).stem}_{filtering}_{element_subset_str}"
 
     print(f"Will use {system_name} for naming output files.")
-    # Fit dimensionality reduction
-    slices = get_layer_specific_feature_slices(calc)
-    reducers = []
-    for i, sli in enumerate(slices):
-        tag = f"layer_{i}"
-        umap_reducer, pca_reducer = fit_dimensionality_reduction(
-            training_data_df, tag, sli
-        )
-        if create_plots:
-            apply_dimensionality_reduction(
-                test_data_df, tag, sli, umap_reducer, pca_reducer
-            )
-        reducers.append((umap_reducer, pca_reducer))
-    # Produce plots if requested
+
+    tag = "readout"
+    sli = slice(None)
+    umap_reducer, pca_reducer = fit_dimensionality_reduction(
+        training_data_df, tag, sli,
+    )
     if create_plots:
+        apply_dimensionality_reduction(
+            test_data_df, tag, sli, umap_reducer, pca_reducer
+        )
         figure = plot_dimensionality_reduction(
-            training_data_df, test_data_df, len(slices)
+            training_data_df, test_data_df, 1,
         )
         figure.savefig(f"{system_name}_dimensionality_reduction.pdf")
-    # Find closest training points
+
     results_df = find_closest_training_points(training_data_df, test_data_df)
     results_df.to_csv(f"{system_name}_closest_training_points.csv", index=False)
+
+    # To fit original code, see get_reduced_embeddings
+    reducers = [None, (umap_reducer, pca_reducer)]
     # Produce chemiscope input file
     write_chemiscope_input(train_atoms, test_atoms, reducers, system_name)
 
