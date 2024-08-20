@@ -44,7 +44,7 @@ def calculate_descriptors(
     model = calc.model  # TODO: support descriptor in sevennet calculator and fix here
     model.to(calc.device)
     for mol in tqdm(atoms):
-        data = sevenn.util.unlabeled_atoms_to_input(mol, cutoff, calc.grad_key)
+        data = sevenn.util.unlabeled_atoms_to_input(mol, cutoff, KEY.POS)
         data[KEY.NODE_FEATURE] = torch.LongTensor(
             [calc.type_map[z.item()] for z in data[KEY.NODE_FEATURE]]
         )
