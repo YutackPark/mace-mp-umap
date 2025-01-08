@@ -1,3 +1,7 @@
+[![DOI](https://zenodo.org/badge/844477660.svg)](https://doi.org/10.5281/zenodo.14613412)
+
+Fork of mace-mp-umap, to be used with SevenNet descriptors.
+
 # Tool for generating chemiscope input file
 
 ## Installation
